@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Визуализация маршрутов</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ol3/4.6.5/ol.css" type="text/css">
+    <style>
+        #map {
+            width: 100%;
+            height: 80vh;
+        }
+        .form-container {
+            margin: 20px;
+        }
+        .form-container form {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f2f2f2;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        .form-container form label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-container form input[type=text],
+        .form-container form select {
+            width: calc(100% - 20px);
+            padding: 8px;
+            margin-bottom: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .form-container form button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .form-container form button:hover {
+            background-color: #45a049;
+        }
+        .form-container form button:active {
+            background-color: #3e8e41;
+        }
+        .form-container form #routeDistance,
+        .form-container form #routeTime {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .nearest-intersections {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <form id="routeForm">
+            <label for="source">Начальная точка (адрес или координаты):</label>
+            <input type="text" id="source" name="source" required>
+            <br><br>
+            <label for="target">Конечная точка (адрес или координаты):</label>
+            <input type="text" id="target" name="target" required>
+            <br><br>
+            <label for="route_type">Тип маршрута:</label>
+            <select id="route_type" name="route_type" required>
+                <option value="walk">Пешеходный</option>
+                <option value="drive">Автомобильный</option>
+            </select>
+            <br><br>
+            <button type="submit">Найти маршрут</button>
+            <button type="button" id="clearRoute">Очистить маршрут</button>
+            <button type="button" id="findSimpleRoute">Маршрут (без отправки координат)</button>
+            <div id="routeDistance" style="margin-top: 10px;"></div>
+            <div id="routeTime" style="margin-top: 10px;"></div>
+        </form>
+        <form id="geocodeForm">
+            <label for="address">Адрес:</label>
+            <input type="text" id="address" name="address" required>
+            <br><br>
+            <button type="submit">Геокодировать адрес</button>
+            <div id="geocodeResult" style="margin-top: 20px;"></div>
+        </form>
+        <div class="nearest-intersections" id="nearestIntersections"></div>
+    </div>
+    <div id="map" class="map"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ol3/4.6.5/ol.js"></script>
+    <script>
+        var map = new ol.Map({
+            target: 'map',
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM()
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([83.763611, 53.347778]), // Центр Барнаула
+                zoom: 12
+            })
+        });
+
+        var vectorLayer = null;
+
+        function loadRoute(data) {
+            if (vectorLayer) {
+                map.removeLayer(vectorLayer);
+            }
+
+            var coordinates = data.coordinates.map(function(coord) {
+                return ol.proj.fromLonLat([coord.lon, coord.lat]);
+            });
+
+            var routeFeature = new ol.Feature({
+                geometry: new ol.geom.LineString(coordinates)
+            });
+
+            var vectorSource = new ol.source.Vector({
+                features: [routeFeature]
+            });
+
+            vectorLayer = new ol.layer.Vector({
+                source: vectorSource,
+                style: new ol.style.Style({
+                    stroke: new ol.style.Stroke({
+                        color: '#FF0000',
+                        width: 3
+                    })
+                })
+            });
+
+            map.addLayer(vectorLayer);
+            map.getView().fit(vectorSource.getExtent(), { padding: [50, 50, 50, 50] });
+        }
+
+        document.getElementById('routeForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+            var source = document.getElementById('source').value;
+            var target = document.getElementById('target').value;
+            var route_type = document.getElementById('route_type').value;
+
+            fetch('/find_route', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    source: source,
+                    target: target,
+                    route_type: route_type
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadRoute(data);
+                        const routeLengthKm = data.length / 1000;
+                        document.getElementById('routeDistance').innerText = `Длина маршрута: ${routeLengthKm.toFixed(2)} км`;
+                        document.getElementById('routeTime').innerText = `Примерное время в пути: ${data.travel_time.toFixed(1)} мин`;
+                    }
+                })
+                .catch(error => console.error('Ошибка:', error));
+        });
+
+        document.getElementById('findSimpleRoute').addEventListener('click', function () {
+            var source = document.getElementById('source').value;
+            var target = document.getElementById('target').value;
+            var route_type = document.getElementById('route_type').value;
+
+            fetch('/find_route_simple', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    source: source,
+                    target: target,
+                    route_type: route_type
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        const routeLengthKm = data.length / 1000;
+                        document.getElementById('routeDistance').innerText = `Длина маршрута: ${routeLengthKm.toFixed(2)} км`;
+                        document.getElementById('routeTime').innerText = `Примерное время в пути: ${data.travel_time.toFixed(1)} мин`;
+                    }
+                })
+                .catch(error => console.error('Ошибка:', error));
+        });
+
+        document.getElementById('clearRoute').addEventListener('click', function () {
+            if (vectorLayer) {
+                map.removeLayer(vectorLayer);
+                vectorLayer = null;
+                document.getElementById('routeDistance').innerText = '';
+                document.getElementById('routeTime').innerText = '';
+            }
+        });
+
+        document.getElementById('geocodeForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+            var address = document.getElementById('address').value;
+
+            fetch('/geocode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ address: address }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        var geocodeResult = document.getElementById('geocodeResult');
+                        geocodeResult.innerHTML = `<p>Координаты: ${data.coordinates.latitude}, ${data.coordinates.longitude}</p>`;
+                        alert('Адрес успешно геокодирован и сохранен в базе данных.');
+                    }
+                })
+                .catch(error => console.error('Ошибка:', error));
+        });
+    </script>
+</body>
+</html>
