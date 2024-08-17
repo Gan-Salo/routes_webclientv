@@ -2,7 +2,7 @@ import osmnx as ox
 from neo4j import GraphDatabase, basic_auth
 import time
 
-NEO4J_URI = "bolt://localhost:7687"
+NEO4J_URI = "80.249.146.190:8081"
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = "ogv27112002"
 
