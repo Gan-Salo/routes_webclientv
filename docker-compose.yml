@@ -6,6 +6,9 @@ services:
     container_name: neo4j
     environment:
       - NEO4J_AUTH=neo4j/ogv27112002
+      - NEO4J_server_https_advertised__address=80.249.146.190:7473
+      - NEO4J_server_http_advertised__address=80.249.146.190:7474
+      - NEO4J_server_bolt_advertised__address=80.249.146.190:7687
     ports:
       - 7474:7474
       - 7687:7687
